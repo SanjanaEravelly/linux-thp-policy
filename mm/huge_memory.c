@@ -7,6 +7,7 @@
 
 #include <linux/mm.h>
 #include <linux/sched.h>
+#include <linux/sched/loadavg.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/coredump.h>
 #include <linux/sched/numa_balancing.h>
@@ -70,6 +71,12 @@ static struct shrinker deferred_split_shrinker;
 static atomic_t huge_zero_refcount;
 struct page *huge_zero_page __read_mostly;
 unsigned long huge_zero_pfn __read_mostly = ~0UL;
+
+static inline bool custom_thp_policy(struct vm_area_struct *vma)
+{
+    pr_info("1-min Load: %lu\n", avenrun[0]);
+    return true;
+}
 
 bool hugepage_vma_check(struct vm_area_struct *vma, unsigned long vm_flags,
 			bool smaps, bool in_pf, bool enforce_sysfs)
@@ -785,6 +792,12 @@ vm_fault_t do_huge_pmd_anonymous_page(struct vm_fault *vmf)
 
 	if (!transhuge_vma_suitable(vma, haddr))
 		return VM_FAULT_FALLBACK;
+
+	if (!custom_thp_policy(vma)) {
+		pr_info("Custom THP policy: pid %d (%s)\n", current->pid, current->comm);
+		return VM_FAULT_FALLBACK;
+	}
+
 	if (unlikely(anon_vma_prepare(vma)))
 		return VM_FAULT_OOM;
 	khugepaged_enter_vma(vma, vma->vm_flags);
