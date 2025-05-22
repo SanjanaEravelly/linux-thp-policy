@@ -47,6 +47,9 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/thp.h>
 
+#define FSHIFT 11
+#define FIXED_1 (1<<FSHIFT)
+
 /*
  * By default, transparent hugepage support is disabled in order to avoid
  * risking an increased memory footprint for applications that are not
@@ -74,8 +77,17 @@ unsigned long huge_zero_pfn __read_mostly = ~0UL;
 
 static inline bool custom_thp_policy(struct vm_area_struct *vma)
 {
-    pr_info("1-min Load: %lu\n", avenrun[0]);
-    return true;
+	if (avenrun[0] > 2 * FIXED_1) {  // loadavg > 2
+		pr_info("Custom THP policy: High loadaverage\n");
+		return false;
+	}
+
+	if (current->policy == SCHED_FIFO || current->policy == SCHED_RR) {
+		pr_info("Custom THP policy: Realtime scheduling\n");
+		return false;
+	}
+
+	return true;
 }
 
 bool hugepage_vma_check(struct vm_area_struct *vma, unsigned long vm_flags,
@@ -794,7 +806,7 @@ vm_fault_t do_huge_pmd_anonymous_page(struct vm_fault *vmf)
 		return VM_FAULT_FALLBACK;
 
 	if (!custom_thp_policy(vma)) {
-		pr_info("Custom THP policy: pid %d (%s)\n", current->pid, current->comm);
+		pr_info("Custom THP policy: denying THP for pid %d (%s)\n", current->pid, current->comm);
 		return VM_FAULT_FALLBACK;
 	}
 
